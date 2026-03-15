@@ -1,0 +1,299 @@
+{% extends request.ajax ? 'layout_blank.html.twig' : 'layout_default.html.twig' %}
+{% import 'macro_functions.html.twig' as mf %}
+{% set active_menu = 'openprovider' %}
+
+{% block meta_title %}DNS Zone: {{ zone_name }}{% endblock %}
+
+{% block content %}
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h3 class="card-title">{{ zone_name }}</h3>
+        <div>
+            <a href="{{ 'openprovider'|alink }}" class="btn btn-sm btn-secondary">{{ 'Back to Zones'|trans }}</a>
+            <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addRecordModal">{{ 'Add Record'|trans }}</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="mb-3">
+            <div class="btn-group btn-group-sm" id="record-type-filter">
+                <button class="btn btn-outline-secondary active" data-type="">All</button>
+                <button class="btn btn-outline-secondary" data-type="A">A</button>
+                <button class="btn btn-outline-secondary" data-type="AAAA">AAAA</button>
+                <button class="btn btn-outline-secondary" data-type="CNAME">CNAME</button>
+                <button class="btn btn-outline-secondary" data-type="MX">MX</button>
+                <button class="btn btn-outline-secondary" data-type="TXT">TXT</button>
+                <button class="btn btn-outline-secondary" data-type="NS">NS</button>
+                <button class="btn btn-outline-secondary" data-type="SRV">SRV</button>
+                <button class="btn btn-outline-secondary" data-type="CAA">CAA</button>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-sm">
+                <thead>
+                    <tr>
+                        <th>{{ 'Name'|trans }}</th>
+                        <th>{{ 'Type'|trans }}</th>
+                        <th>{{ 'Value'|trans }}</th>
+                        <th>{{ 'TTL'|trans }}</th>
+                        <th>{{ 'Priority'|trans }}</th>
+                        <th class="text-end">{{ 'Actions'|trans }}</th>
+                    </tr>
+                </thead>
+                <tbody id="record-list">
+                    <tr><td colspan="6" class="text-center text-muted">{{ 'Loading...'|trans }}</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Record Modal -->
+<div class="modal fade" id="addRecordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">{{ 'Add DNS Record'|trans }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">{{ 'Name'|trans }}</label>
+                    <input type="text" class="form-control" id="add-rec-name" placeholder="{{ zone_name }}">
+                    <small class="text-muted">{{ 'Leave empty for zone root, or enter subdomain (e.g. www)'|trans }}</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">{{ 'Type'|trans }}</label>
+                    <select class="form-select" id="add-rec-type">
+                        <option value="A">A</option>
+                        <option value="AAAA">AAAA</option>
+                        <option value="CNAME">CNAME</option>
+                        <option value="MX">MX</option>
+                        <option value="TXT">TXT</option>
+                        <option value="NS">NS</option>
+                        <option value="SRV">SRV</option>
+                        <option value="CAA">CAA</option>
+                        <option value="SPF">SPF</option>
+                        <option value="TLSA">TLSA</option>
+                        <option value="SSHFP">SSHFP</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">{{ 'Value'|trans }}</label>
+                    <input type="text" class="form-control" id="add-rec-value" placeholder="{{ 'e.g. 192.168.1.1'|trans }}">
+                </div>
+                <div class="row">
+                    <div class="col-6 mb-3">
+                        <label class="form-label">{{ 'TTL'|trans }}</label>
+                        <select class="form-select" id="add-rec-ttl">
+                            <option value="300">5 minutes</option>
+                            <option value="900">15 minutes</option>
+                            <option value="1800">30 minutes</option>
+                            <option value="3600" selected>1 hour</option>
+                            <option value="14400">4 hours</option>
+                            <option value="43200">12 hours</option>
+                            <option value="86400">1 day</option>
+                        </select>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <label class="form-label">{{ 'Priority'|trans }}</label>
+                        <input type="number" class="form-control" id="add-rec-prio" value="0">
+                        <small class="text-muted">{{ 'Used for MX and SRV records'|trans }}</small>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ 'Cancel'|trans }}</button>
+                <button type="button" class="btn btn-primary" id="add-record-btn">{{ 'Add Record'|trans }}</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Record Modal -->
+<div class="modal fade" id="editRecordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">{{ 'Edit DNS Record'|trans }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-original-record">
+                <div class="mb-3">
+                    <label class="form-label">{{ 'Name'|trans }}</label>
+                    <input type="text" class="form-control" id="edit-rec-name">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">{{ 'Type'|trans }}</label>
+                    <input type="text" class="form-control" id="edit-rec-type" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">{{ 'Value'|trans }}</label>
+                    <input type="text" class="form-control" id="edit-rec-value">
+                </div>
+                <div class="row">
+                    <div class="col-6 mb-3">
+                        <label class="form-label">{{ 'TTL'|trans }}</label>
+                        <select class="form-select" id="edit-rec-ttl">
+                            <option value="300">5 minutes</option>
+                            <option value="900">15 minutes</option>
+                            <option value="1800">30 minutes</option>
+                            <option value="3600">1 hour</option>
+                            <option value="14400">4 hours</option>
+                            <option value="43200">12 hours</option>
+                            <option value="86400">1 day</option>
+                        </select>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <label class="form-label">{{ 'Priority'|trans }}</label>
+                        <input type="number" class="form-control" id="edit-rec-prio">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ 'Cancel'|trans }}</button>
+                <button type="button" class="btn btn-primary" id="save-record-btn">{{ 'Save Changes'|trans }}</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+var zoneName = '{{ zone_name }}';
+var allRecords = [];
+var currentFilter = '';
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadRecords();
+
+    // Type filter buttons
+    document.querySelectorAll('#record-type-filter button').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('#record-type-filter button').forEach(function(b) { b.classList.remove('active'); });
+            this.classList.add('active');
+            currentFilter = this.dataset.type;
+            renderRecords();
+        });
+    });
+
+    // Add record
+    document.getElementById('add-record-btn').addEventListener('click', function() {
+        var name = document.getElementById('add-rec-name').value.trim();
+        var fullName = name ? name + '.' + zoneName : zoneName;
+
+        var record = {
+            name: fullName,
+            type: document.getElementById('add-rec-type').value,
+            value: document.getElementById('add-rec-value').value.trim(),
+            ttl: parseInt(document.getElementById('add-rec-ttl').value),
+            prio: parseInt(document.getElementById('add-rec-prio').value) || 0
+        };
+
+        if (!record.value) {
+            FOSSBilling.message('Record value is required.', 'error');
+            return;
+        }
+
+        API.admin.post('openprovider/record_add', {
+            zone_name: zoneName,
+            records: JSON.stringify([record])
+        }, function() {
+            FOSSBilling.message('Record added.');
+            bootstrap.Modal.getInstance(document.getElementById('addRecordModal')).hide();
+            document.getElementById('add-rec-name').value = '';
+            document.getElementById('add-rec-value').value = '';
+            document.getElementById('add-rec-prio').value = '0';
+            loadRecords();
+        });
+    });
+
+    // Save edited record
+    document.getElementById('save-record-btn').addEventListener('click', function() {
+        var original = JSON.parse(document.getElementById('edit-original-record').value);
+        var updated = {
+            name: document.getElementById('edit-rec-name').value.trim(),
+            type: document.getElementById('edit-rec-type').value,
+            value: document.getElementById('edit-rec-value').value.trim(),
+            ttl: parseInt(document.getElementById('edit-rec-ttl').value),
+            prio: parseInt(document.getElementById('edit-rec-prio').value) || 0
+        };
+
+        API.admin.post('openprovider/record_update', {
+            zone_name: zoneName,
+            original_record: JSON.stringify(original),
+            new_record: JSON.stringify(updated)
+        }, function() {
+            FOSSBilling.message('Record updated.');
+            bootstrap.Modal.getInstance(document.getElementById('editRecordModal')).hide();
+            loadRecords();
+        });
+    });
+});
+
+function loadRecords() {
+    API.admin.post('openprovider/zone_get', {name: zoneName}, function(result) {
+        allRecords = result.records || [];
+        renderRecords();
+    });
+}
+
+function renderRecords() {
+    var tbody = document.getElementById('record-list');
+    var records = currentFilter ? allRecords.filter(function(r) { return r.type === currentFilter; }) : allRecords;
+
+    if (records.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No records found.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = '';
+    records.forEach(function(rec) {
+        var tr = document.createElement('tr');
+        var escapedValue = (rec.value || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        var recJson = JSON.stringify({name: rec.name, type: rec.type, value: rec.value, ttl: rec.ttl, prio: rec.prio || 0}).replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+
+        tr.innerHTML =
+            '<td><code>' + (rec.name || zoneName) + '</code></td>' +
+            '<td><span class="badge bg-primary">' + rec.type + '</span></td>' +
+            '<td style="max-width:300px;word-break:break-all;">' + escapedValue + '</td>' +
+            '<td>' + rec.ttl + '</td>' +
+            '<td>' + (rec.prio || 0) + '</td>' +
+            '<td class="text-end">' +
+                '<button class="btn btn-sm btn-outline-primary edit-rec-btn" data-record="' + recJson + '">Edit</button> ' +
+                '<button class="btn btn-sm btn-outline-danger delete-rec-btn" data-record="' + recJson + '">Delete</button>' +
+            '</td>';
+        tbody.appendChild(tr);
+    });
+
+    // Edit buttons
+    document.querySelectorAll('.edit-rec-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var rec = JSON.parse(this.dataset.record);
+            document.getElementById('edit-original-record').value = JSON.stringify(rec);
+            document.getElementById('edit-rec-name').value = rec.name;
+            document.getElementById('edit-rec-type').value = rec.type;
+            document.getElementById('edit-rec-value').value = rec.value;
+            document.getElementById('edit-rec-ttl').value = rec.ttl;
+            document.getElementById('edit-rec-prio').value = rec.prio || 0;
+            new bootstrap.Modal(document.getElementById('editRecordModal')).show();
+        });
+    });
+
+    // Delete buttons
+    document.querySelectorAll('.delete-rec-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var rec = JSON.parse(this.dataset.record);
+            if (confirm('Delete ' + rec.type + ' record for ' + rec.name + '?')) {
+                API.admin.post('openprovider/record_delete', {
+                    zone_name: zoneName,
+                    records: JSON.stringify([rec])
+                }, function() {
+                    FOSSBilling.message('Record deleted.');
+                    loadRecords();
+                });
+            }
+        });
+    });
+}
+</script>
+{% endblock %}

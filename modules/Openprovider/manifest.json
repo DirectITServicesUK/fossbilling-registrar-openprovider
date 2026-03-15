@@ -1,0 +1,8 @@
+{
+  "id": "Openprovider",
+  "type": "mod",
+  "name": "OpenProvider DNS",
+  "description": "Manage OpenProvider DNS zones and records from the FOSSBilling admin panel",
+  "version": "1.0.0",
+  "icon_url": "icon.svg"
+}
