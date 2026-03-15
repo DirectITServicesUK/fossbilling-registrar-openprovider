@@ -160,6 +160,19 @@ class Registrar_Adapter_OpenProvider extends Registrar_AdapterAbstract
         return isset($result['status']) && $result['status'] === 'active';
     }
 
+    /**
+     * Nominet .uk TLDs use IPS tag transfers, not EPP auth codes.
+     * OpenProvider's IPS tag is REGISTRAR-EU.
+     */
+    private const NOMINET_TLDS = ['uk', 'co.uk', 'org.uk', 'me.uk', 'net.uk', 'plc.uk', 'ltd.uk', 'sch.uk'];
+    public const OPENPROVIDER_IPS_TAG = 'REGISTRAR-EU';
+
+    /**
+     * TLDs with minimum registration/transfer periods greater than 1 year.
+     * Key = extension, value = minimum period in years.
+     */
+    private const MIN_PERIOD_TLDS = ['ai' => 2];
+
     public function transferDomain(Registrar_Domain $domain)
     {
         // Step 1: Ensure a customer handle exists
@@ -171,15 +184,20 @@ class Registrar_Adapter_OpenProvider extends Registrar_AdapterAbstract
                 'name' => $domain->getSld(),
                 'extension' => $this->_stripTld($domain),
             ],
-            'period' => $domain->getRegistrationPeriod(),
+            'period' => $this->_getMinPeriod($domain),
             'owner_handle' => $customerHandle,
             'admin_handle' => $customerHandle,
             'tech_handle' => $customerHandle,
             'billing_handle' => $customerHandle,
             'ns_group' => 'dns-openprovider',
             'autorenew' => 'default',
-            'auth_code' => $domain->getEpp(),
         ];
+
+        // Only include auth_code for non-Nominet TLDs.
+        // .uk domains use IPS tag transfers — no EPP auth code required.
+        if (!$this->_isNominetTld($domain)) {
+            $data['auth_code'] = $domain->getEpp();
+        }
 
         $response = $this->_request('POST', '/domains/transfer', $data);
         if ($response['code'] === 0) {
@@ -187,6 +205,27 @@ class Registrar_Adapter_OpenProvider extends Registrar_AdapterAbstract
         }
 
         return false;
+    }
+
+    /**
+     * Check if a domain is a Nominet .uk TLD (uses IPS tag, not EPP auth code).
+     */
+    private function _isNominetTld(Registrar_Domain $domain): bool
+    {
+        $extension = strtolower($this->_stripTld($domain));
+        return in_array($extension, self::NOMINET_TLDS, true);
+    }
+
+    /**
+     * Get the minimum transfer/registration period for a TLD.
+     * Some TLDs (e.g. .ai) require a minimum period greater than 1 year.
+     */
+    private function _getMinPeriod(Registrar_Domain $domain): int
+    {
+        $extension = strtolower($this->_stripTld($domain));
+        $requested = (int) $domain->getRegistrationPeriod();
+        $minimum = self::MIN_PERIOD_TLDS[$extension] ?? 1;
+        return max($requested, $minimum);
     }
 
     public function renewDomain(Registrar_Domain $domain)
