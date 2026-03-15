@@ -11,6 +11,12 @@ This project integrates the OpenProvider domain registrar with FOSSBilling, enab
 - **Domain Management**: Update DNS, WHOIS, and other settings directly.
 - **Renewals**: Automate domain renewals through OpenProvider.
 
+### Additions by [Direct IT Services](https://www.directitservices.co.uk)
+
+- **Nominet .uk IPS Tag Transfer Support**: `.uk`, `.co.uk`, `.org.uk`, `.me.uk` and other Nominet TLDs now use the correct IPS tag transfer mechanism instead of EPP auth codes. OpenProvider's IPS tag is `REGISTRAR-EU`.
+- **Minimum Period Enforcement**: TLDs with minimum registration periods greater than 1 year (e.g. `.ai` requires 2 years) are automatically enforced at the adapter level.
+- **Transfer Order Form Template Override**: An updated `mod_servicedomain_order_form.html.twig` is included that conditionally shows IPS tag instructions for `.uk` domains instead of the EPP auth code field. Copy this to your FOSSBilling theme to apply.
+
 ---
 
 ## Requirements
@@ -24,7 +30,7 @@ This project integrates the OpenProvider domain registrar with FOSSBilling, enab
 
 1. Clone this repository and copy the files to the root of your FOSSBilling installation:
    ```bash
-   git clone https://github.com/Devife/fossbilling-registrar-openprovider.git
+   git clone https://github.com/DirectITServicesUK/fossbilling-registrar-openprovider.git
    ```
 1. Navigate to the FOSSBilling admin panel.
 
@@ -69,3 +75,5 @@ This project is licensed under the Apache 2.0 License. See the [LICENSE](LICENSE
 
 1. [OpenProvider](https://www.openprovider.com/) for their robust API.
 1. [FOSSBilling](https://fossbilling.org/) for their open-source billing platform.
+1. [Devife](https://www.devife.com/) for the original OpenProvider registrar module.
+1. [Direct IT Services](https://www.directitservices.co.uk/) for .uk IPS tag transfer support and TLD minimum period handling.
