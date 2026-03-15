@@ -1,3 +1,5 @@
+{# Domain order form — single input field, auto-parses SLD/TLD.
+   Added by Direct IT Services: .uk IPS tag support, multi-TLD availability check. #}
 {% set periods = guest.system_periods %}
 {% set pricing = product.pricing %}
 {% set transfer_tlds = guest.serviceDomain_tlds({ "allow_transfer": 1 }) %}
@@ -20,17 +22,19 @@
                     <div class="col-sm-12">
                         <label class="form-label">{{ 'Register a new domain'|trans }}</label>
                         <div class="d-flex gap-2">
-                            <div class="input-group" style="max-width: 500px;">
-                                <input class="form-control form-control-sm" type="text" name="register_sld"
-                                    value="{{ request.register_sld }}"
-                                    placeholder="{{ 'Enter new domain name to register'|trans }}">
-                                <select class="form-select form-select-sm" name="register_tld" style="width: 30%; max-width: 120px;">
-                                    {% for tld in tlds %}
-                                        <option value="{{ tld.tld }}" label="{{ tld.tld }}">{{ tld.tld }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
+                            <input class="form-control form-control-sm" type="text" id="register-domain-input"
+                                style="max-width: 400px;"
+                                placeholder="{{ 'e.g. example.co.uk'|trans }}">
+                            <input type="hidden" name="register_sld" id="register-sld-hidden">
+                            <input type="hidden" name="register_tld" id="register-tld-hidden">
                             <button class="btn btn-sm btn-dark" type="button" id="domain-check">{{ 'Check'|trans }}</button>
+                        </div>
+                        <div id="register-parse-error" class="text-danger fs-7 mt-1" style="display:none;"></div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div id="register-alternatives" class="mt-3" style="display:none;">
+                            <p class="fs-7 fw-bold mb-1">{{ 'Also available:'|trans }}</p>
+                            <div id="register-alt-list" class="d-flex flex-wrap gap-2"></div>
                         </div>
                     </div>
                     <div class="c">
@@ -68,20 +72,16 @@
             <div class="tab-pane {% if tlds is empty %} show active {% endif %}" id="transfer-tab-pane" role="tabpanel" aria-labelledby="transfer-tab" tabindex="0">
                 <div class="row">
                     <div class="col-sm-12">
-                        <label class="form-label">{{ 'Transfer a new domain'|trans }}</label>
+                        <label class="form-label">{{ 'Transfer a domain'|trans }}</label>
                         <div class="d-flex gap-2">
-                            <div class="input-group" style="max-width: 500px;">
-                                <input class="form-control form-control-sm" type="text" name="transfer_sld"
-                                       value="{{ request.transfer_sld }}"
-                                       placeholder="{{ 'Enter your domain name to transfer'|trans }}">
-                                <select class="form-select form-select-sm" name="transfer_tld" style="width: 30%; max-width: 120px;">
-                                    {% for tld in transfer_tlds %}
-                                        <option value="{{ tld.tld }}" label="{{ tld.tld }}">{{ tld.tld }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
+                            <input class="form-control form-control-sm" type="text" id="transfer-domain-input"
+                                style="max-width: 400px;"
+                                placeholder="{{ 'e.g. example.co.uk'|trans }}">
+                            <input type="hidden" name="transfer_sld" id="transfer-sld-hidden">
+                            <input type="hidden" name="transfer_tld" id="transfer-tld-hidden">
                             <button class="btn btn-sm btn-dark" type="button" id="transfer-check">{{ 'Check'|trans }}</button>
                         </div>
+                        <div id="transfer-parse-error" class="text-danger fs-7 mt-1" style="display:none;"></div>
                     </div>
                     <div id="domain-transfer-config" style="display:none;">
                         <p class="fs-7 mt-2">{{ 'Transfer price is'|trans }}&nbsp;<span class="fw-bold" id="transfer-price"></span></p>
@@ -134,11 +134,28 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
-        document.querySelectorAll('ul.nav.nav-tabs > li.domain-tab a').forEach(a => {
-            a.addEventListener('click', function () {
-                document.getElementById('domain-action').value = this.getAttribute('rel');
-            });
-        });
+        // Build sorted TLD lists from Twig data (longest first for greedy matching)
+        const registerTlds = [
+            {% for tld in tlds %}'{{ tld.tld }}'{% if not loop.last %},{% endif %}{% endfor %}
+        ].sort((a, b) => b.length - a.length);
+
+        const transferTldList = [
+            {% for tld in transfer_tlds %}'{{ tld.tld }}'{% if not loop.last %},{% endif %}{% endfor %}
+        ].sort((a, b) => b.length - a.length);
+
+        // Parse a full domain name into {sld, tld} using longest-match against available TLDs
+        function parseDomain(input, tldList) {
+            const domain = input.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+            for (const tld of tldList) {
+                if (domain.endsWith(tld)) {
+                    const sld = domain.slice(0, domain.length - tld.length);
+                    if (sld.length > 0 && !sld.endsWith('.')) {
+                        return { sld: sld, tld: tld };
+                    }
+                }
+            }
+            return null;
+        }
 
         const configNext = document.getElementById('config-next');
         configNext.style.display = 'none';
@@ -182,7 +199,7 @@
 
         function isNominetTld(tld) {
             return nominetTlds.some(function(ukTld) {
-                return tld === ukTld || tld.endsWith(ukTld);
+                return tld === ukTld;
             });
         }
 
@@ -207,29 +224,44 @@
             }
         }
 
-        const transferCheck = document.getElementById('transfer-check');
-        if (transferCheck) {
-            transferCheck.addEventListener('click', function (event) {
-                const sld = document.querySelector('input[name="transfer_sld"]').value.toLowerCase();
-                const tld = document.querySelector('select[name="transfer_tld"]').value.toLowerCase();
-                document.getElementById('domain-action').value = 'transfer';
-                const domain = sld + tld;
+        // --- Registration: check availability + show alternatives ---
+        const domainCheck = document.getElementById('domain-check');
+        if (domainCheck) {
+            domainCheck.addEventListener('click', function (event) {
+                const input = document.getElementById('register-domain-input').value;
+                const errorEl = document.getElementById('register-parse-error');
+                const altContainer = document.getElementById('register-alternatives');
+                const altList = document.getElementById('register-alt-list');
+                errorEl.style.display = 'none';
+                altContainer.style.display = 'none';
+                altList.innerHTML = '';
+
+                const parsed = parseDomain(input, registerTlds);
+                if (!parsed) {
+                    errorEl.textContent = "{{ 'Could not recognise the domain extension. Please enter a full domain name, e.g. example.co.uk'|trans }}";
+                    errorEl.style.display = '';
+                    return false;
+                }
+
+                document.getElementById('register-sld-hidden').value = parsed.sld;
+                document.getElementById('register-tld-hidden').value = parsed.tld;
+                document.getElementById('domain-action').value = 'register';
 
                 API.guest.post(
-                    'servicedomain/can_be_transferred',
-                    {sld: sld, tld: tld},
+                    'servicedomain/check',
+                    {sld: parsed.sld, tld: parsed.tld},
                     function (result) {
-                        setTransferPricing(tld);
-                        updateTransferFields(tld);
+                        setPricing(parsed.tld);
                         const domainNameEl = document.getElementById('domain-name');
-                        if (domainNameEl) domainNameEl.textContent = domain;
-                        const transferConfig = document.getElementById('domain-transfer-config');
-                        if (transferConfig) fadeIn(transferConfig);
+                        if (domainNameEl) domainNameEl.textContent = parsed.sld + parsed.tld;
                         const onAfterDomainCheck = document.querySelector('.onAfterDomainCheck');
                         if (onAfterDomainCheck) fadeIn(onAfterDomainCheck);
-                        transferCheck.style.display = 'none';
-                        const transferOrderButton = document.querySelector('#transfer .order-button');
-                        if (transferOrderButton) transferOrderButton.style.display = '';
+                        domainCheck.style.display = 'none';
+                        const registerOrderButton = document.querySelector('#register .order-button');
+                        if (registerOrderButton) registerOrderButton.style.display = '';
+
+                        // Check availability on other TLDs
+                        checkAlternatives(parsed.sld, parsed.tld, registerTlds);
                     },
                 );
 
@@ -237,25 +269,84 @@
             });
         }
 
-        const domainCheck = document.getElementById('domain-check');
-        if (domainCheck) {
-            domainCheck.addEventListener('click', function (event) {
-                const sld = document.querySelector('input[name="register_sld"]').value.toLowerCase();
-                const tld = document.querySelector('select[name="register_tld"]').value.toLowerCase();
-                const domain = sld + tld;
-                document.getElementById('domain-action').value = 'register';
+        // Check other TLDs for the same SLD and show available alternatives
+        function checkAlternatives(sld, chosenTld, tldList) {
+            const altContainer = document.getElementById('register-alternatives');
+            const altList = document.getElementById('register-alt-list');
+            let found = 0;
+
+            const otherTlds = tldList.filter(t => t !== chosenTld);
+
+            // Check in batches to avoid hammering the API
+            let checked = 0;
+            otherTlds.forEach(function(tld) {
                 API.guest.post(
                     'servicedomain/check',
                     {sld: sld, tld: tld},
                     function (result) {
-                        setPricing(tld);
+                        found++;
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'btn btn-sm btn-outline-success';
+                        btn.textContent = sld + tld;
+                        btn.addEventListener('click', function() {
+                            // Switch to this TLD
+                            document.getElementById('register-domain-input').value = sld + tld;
+                            document.getElementById('register-sld-hidden').value = sld;
+                            document.getElementById('register-tld-hidden').value = tld;
+                            setPricing(tld);
+                            // Highlight selected
+                            altList.querySelectorAll('.btn').forEach(b => {
+                                b.classList.remove('btn-success');
+                                b.classList.add('btn-outline-success');
+                            });
+                            btn.classList.remove('btn-outline-success');
+                            btn.classList.add('btn-success');
+                        });
+                        altList.appendChild(btn);
+                        altContainer.style.display = '';
+                    },
+                    function (error) {
+                        // Domain not available or error — skip silently
+                    }
+                );
+            });
+        }
+
+        // --- Transfer: check + show config ---
+        const transferCheck = document.getElementById('transfer-check');
+        if (transferCheck) {
+            transferCheck.addEventListener('click', function (event) {
+                const input = document.getElementById('transfer-domain-input').value;
+                const errorEl = document.getElementById('transfer-parse-error');
+                errorEl.style.display = 'none';
+
+                const parsed = parseDomain(input, transferTldList);
+                if (!parsed) {
+                    errorEl.textContent = "{{ 'Could not recognise the domain extension. Please enter a full domain name, e.g. example.co.uk'|trans }}";
+                    errorEl.style.display = '';
+                    return false;
+                }
+
+                document.getElementById('transfer-sld-hidden').value = parsed.sld;
+                document.getElementById('transfer-tld-hidden').value = parsed.tld;
+                document.getElementById('domain-action').value = 'transfer';
+
+                API.guest.post(
+                    'servicedomain/can_be_transferred',
+                    {sld: parsed.sld, tld: parsed.tld},
+                    function (result) {
+                        setTransferPricing(parsed.tld);
+                        updateTransferFields(parsed.tld);
                         const domainNameEl = document.getElementById('domain-name');
-                        if (domainNameEl) domainNameEl.textContent = domain;
+                        if (domainNameEl) domainNameEl.textContent = parsed.sld + parsed.tld;
+                        const transferConfig = document.getElementById('domain-transfer-config');
+                        if (transferConfig) fadeIn(transferConfig);
                         const onAfterDomainCheck = document.querySelector('.onAfterDomainCheck');
                         if (onAfterDomainCheck) fadeIn(onAfterDomainCheck);
-                        domainCheck.style.display = 'none';
-                        const registerOrderButton = document.querySelector('#register .order-button');
-                        if (registerOrderButton) registerOrderButton.style.display = '';
+                        transferCheck.style.display = 'none';
+                        const transferOrderButton = document.querySelector('#transfer .order-button');
+                        if (transferOrderButton) transferOrderButton.style.display = '';
                     },
                 );
 
