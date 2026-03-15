@@ -158,8 +158,10 @@
         }
 
         const configNext = document.getElementById('config-next');
-        configNext.style.display = 'none';
-        configNext.disabled = true;
+        if (configNext) {
+            configNext.style.display = 'none';
+            configNext.disabled = true;
+        }
 
         const addons = document.querySelector('.addons');
         if (addons) {
@@ -387,8 +389,10 @@
                         );
                     }
 
-                    configNext.style.display = '';
-                    configNext.disabled = false;
+                    if (configNext) {
+                        configNext.style.display = '';
+                        configNext.disabled = false;
+                    }
                 },
             );
         }
@@ -401,8 +405,10 @@
                     const price = formatCurrency(result.price_transfer, {{ currency.conversion_rate }}, "{{ currency.code }}");
                     const transferPriceEl = document.getElementById('transfer-price');
                     if (transferPriceEl) transferPriceEl.textContent = price;
-                    configNext.style.display = '';
-                    configNext.disabled = false;
+                    if (configNext) {
+                        configNext.style.display = '';
+                        configNext.disabled = false;
+                    }
                 },
             );
         }
