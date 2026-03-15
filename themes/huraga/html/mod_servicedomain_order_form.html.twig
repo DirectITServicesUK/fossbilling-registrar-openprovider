@@ -151,6 +151,16 @@
             return null;
         }
 
+        // Extract the TLD portion from user input (for error messages)
+        function extractTld(input) {
+            const domain = input.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+            const firstDot = domain.indexOf('.');
+            if (firstDot > 0) {
+                return domain.substring(firstDot);
+            }
+            return null;
+        }
+
         const configNext = document.getElementById('config-next');
         if (configNext) {
             configNext.style.display = 'none';
@@ -226,15 +236,16 @@
             domainCheck.addEventListener('click', function (event) {
                 const input = document.getElementById('register-domain-input').value;
                 const errorEl = document.getElementById('register-parse-error');
-                const altContainer = document.getElementById('register-alternatives');
-                const altList = document.getElementById('register-alt-list');
                 errorEl.style.display = 'none';
-                altContainer.style.display = 'none';
-                altList.innerHTML = '';
 
                 const parsed = parseDomain(input, registerTlds);
                 if (!parsed) {
-                    errorEl.textContent = "{{ 'Could not recognise the domain extension. Please enter a full domain name, e.g. example.co.uk'|trans }}";
+                    const attempted = extractTld(input);
+                    if (attempted) {
+                        errorEl.textContent = "We don't currently support the " + attempted + " extension. Please try another.";
+                    } else {
+                        errorEl.textContent = "Please enter a full domain name, e.g. example.co.uk";
+                    }
                     errorEl.style.display = '';
                     return false;
                 }
@@ -273,7 +284,12 @@
 
                 const parsed = parseDomain(input, transferTldList);
                 if (!parsed) {
-                    errorEl.textContent = "{{ 'Could not recognise the domain extension. Please enter a full domain name, e.g. example.co.uk'|trans }}";
+                    const attempted = extractTld(input);
+                    if (attempted) {
+                        errorEl.textContent = "We don't currently support transfers for the " + attempted + " extension. Please try another.";
+                    } else {
+                        errorEl.textContent = "Please enter a full domain name, e.g. example.co.uk";
+                    }
                     errorEl.style.display = '';
                     return false;
                 }
